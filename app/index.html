@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vice Cover Studio - GTA 6 Cover Art Maker</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="studio-app" id="studio-app">
+  <!-- Top Navigation Bar -->
+  <header class="studio-header">
+    <div class="brand">
+      <div class="brand-logo">VI</div>
+      <div>
+        <h1 class="brand-title">VICE COVER STUDIO</h1>
+        <p class="brand-sub">Offline GTA 6 Cover Art & Poster Engine</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="preset-pills" id="preset-pills">
+        <button type="button" class="preset-btn active" data-preset="vice-sunset">Vice Sunset</button>
+        <button type="button" class="preset-btn" data-preset="neon-noir">Neon Noir</button>
+        <button type="button" class="preset-btn" data-preset="golden-hour">Golden Hour</button>
+        <button type="button" class="preset-btn" data-preset="comic-punch">Comic Inked</button>
+        <button type="button" class="preset-btn" data-preset="ocean-drive">Ocean Drive</button>
+      </div>
+      <button type="button" id="btn-export-quick" class="btn btn-primary">Export Cover PNG</button>
+    </div>
+  </header>
+
+  <!-- Main Studio Workspace -->
+  <main class="studio-workspace">
+    <!-- Left Sidebar: Controls -->
+    <aside class="studio-sidebar" id="studio-sidebar">
+      <!-- Tabs -->
+      <nav class="sidebar-tabs" role="tablist">
+        <button type="button" class="tab-btn active" data-tab="tab-layout">📐 Layout</button>
+        <button type="button" class="tab-btn" data-tab="tab-photos">🖼️ Panels</button>
+        <button type="button" class="tab-btn" data-tab="tab-effects">🎨 Grade</button>
+        <button type="button" class="tab-btn" data-tab="tab-typography">✍️ Text</button>
+        <button type="button" class="tab-btn" data-tab="tab-emblems">🏷️ Badges</button>
+        <button type="button" class="tab-btn" data-tab="tab-export">💾 Export</button>
+      </nav>
+
+      <!-- Tab Content: Layout -->
+      <section class="tab-pane active" id="tab-layout">
+        <div class="control-group">
+          <label class="group-title">Poster Collage Layout</label>
+          <div class="layout-grid">
+            <button type="button" class="layout-card" data-layout="hero">
+              <span class="layout-icon">⬛</span>
+              <span class="layout-name">1-Panel Hero</span>
+            </button>
+            <button type="button" class="layout-card" data-layout="triptych">
+              <span class="layout-icon">◫</span>
+              <span class="layout-name">3-Panel Triptych</span>
+            </button>
+            <button type="button" class="layout-card active" data-layout="quad">
+              <span class="layout-icon">田</span>
+              <span class="layout-name">4-Panel Quad</span>
+            </button>
+            <button type="button" class="layout-card" data-layout="epic">
+              <span class="layout-icon">☵</span>
+              <span class="layout-name">5-Panel Epic</span>
+            </button>
+            <button type="button" class="layout-card" data-layout="diagonal">
+              <span class="layout-icon">⧄</span>
+              <span class="layout-name">Diagonal Split</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Canvas Aspect Ratio</label>
+          <div class="btn-group">
+            <button type="button" class="btn-toggle active" data-ratio="1:1">1:1 Square (1080x1080)</button>
+            <button type="button" class="btn-toggle" data-ratio="4:5">4:5 Poster (1080x1350)</button>
+            <button type="button" class="btn-toggle" data-ratio="16:9">16:9 Screen (1920x1080)</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Comic Panel Border</label>
+          <div class="slider-row">
+            <span>Border Width</span>
+            <input type="range" id="border-width" min="0" max="24" value="10">
+            <span id="border-width-val">10px</span>
+          </div>
+          <div class="color-row">
+            <span>Border Color</span>
+            <input type="color" id="border-color" value="#050308">
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Content: Panels & Photos -->
+      <section class="tab-pane" id="tab-photos">
+        <div class="control-group">
+          <label class="group-title">Select Panel to Edit</label>
+          <div class="panel-selector" id="panel-selector">
+            <button type="button" class="panel-select-btn active" data-panel-idx="0">Panel 1</button>
+            <button type="button" class="panel-select-btn" data-panel-idx="1">Panel 2</button>
+            <button type="button" class="panel-select-btn" data-panel-idx="2">Panel 3</button>
+            <button type="button" class="panel-select-btn" data-panel-idx="3">Panel 4</button>
+            <button type="button" class="panel-select-btn" data-panel-idx="4">Panel 5</button>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Photo Assignment</label>
+          <div class="upload-box">
+            <input type="file" id="photo-upload" accept="image/*" class="file-input">
+            <label for="photo-upload" class="upload-label">
+              <span class="upload-icon">📁</span>
+              <span>Upload Custom Photo</span>
+              <small>Client-side only (never leaves your computer)</small>
+            </label>
+          </div>
+          <div class="sample-box">
+            <span class="sub-label">Or Pick Included Themed Photo:</span>
+            <div class="sample-grid">
+              <button type="button" class="sample-thumb" data-sample="boulevard" title="Beach Boulevard">
+                <img src="./samples/boulevard.jpg" alt="Boulevard">
+                <span>Boulevard</span>
+              </button>
+              <button type="button" class="sample-thumb" data-sample="pier" title="Sunset Pier">
+                <img src="./samples/pier.jpg" alt="Pier">
+                <span>Pier</span>
+              </button>
+              <button type="button" class="sample-thumb" data-sample="rooftop" title="Rooftop Dusk">
+                <img src="./samples/rooftop.jpg" alt="Rooftop">
+                <span>Rooftop</span>
+              </button>
+              <button type="button" class="sample-thumb" data-sample="neoncar" title="Ocean Drive Neon">
+                <img src="./samples/neoncar.jpg" alt="Neon Car">
+                <span>Neon Car</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Active Panel Crop & Transform</label>
+          <div class="slider-row">
+            <span>Pan X</span>
+            <input type="range" id="panel-pan-x" min="-100" max="100" value="0">
+            <span id="panel-pan-x-val">0%</span>
+          </div>
+          <div class="slider-row">
+            <span>Pan Y</span>
+            <input type="range" id="panel-pan-y" min="-100" max="100" value="0">
+            <span id="panel-pan-y-val">0%</span>
+          </div>
+          <div class="slider-row">
+            <span>Zoom</span>
+            <input type="range" id="panel-zoom" min="50" max="300" value="100">
+            <span id="panel-zoom-val">100%</span>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="btn-flip-h" class="btn btn-sm">↔ Flip Horizontal</button>
+            <button type="button" id="btn-flip-v" class="btn btn-sm">↕ Flip Vertical</button>
+            <button type="button" id="btn-reset-panel" class="btn btn-sm">↺ Reset Panel</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Content: Color Grading & Effects -->
+      <section class="tab-pane" id="tab-effects">
+        <div class="control-group">
+          <label class="group-title">Vice City Color Grade</label>
+          <div class="grade-grid">
+            <button type="button" class="grade-card active" data-grade="vice-sunset">
+              <span class="grade-color grade-vice-sunset"></span>
+              <span>Vice Sunset</span>
+            </button>
+            <button type="button" class="grade-card" data-grade="neon-noir">
+              <span class="grade-color grade-neon-noir"></span>
+              <span>Neon Noir</span>
+            </button>
+            <button type="button" class="grade-card" data-grade="comic-punch">
+              <span class="grade-color grade-comic-punch"></span>
+              <span>Comic Punch</span>
+            </button>
+            <button type="button" class="grade-card" data-grade="golden-hour">
+              <span class="grade-color grade-golden-hour"></span>
+              <span>Golden Hour</span>
+            </button>
+            <button type="button" class="grade-card" data-grade="ocean-drive">
+              <span class="grade-color grade-ocean-drive"></span>
+              <span>Ocean Drive</span>
+            </button>
+            <button type="button" class="grade-card" data-grade="none">
+              <span class="grade-color grade-natural"></span>
+              <span>Natural Clean</span>
+            </button>
+          </div>
+          <div class="slider-row">
+            <span>Grade Intensity</span>
+            <input type="range" id="grade-intensity" min="0" max="100" value="85">
+            <span id="grade-intensity-val">85%</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Cinematic Overlays</label>
+          <div class="slider-row">
+            <span>Film Grain</span>
+            <input type="range" id="grain-amount" min="0" max="50" value="15">
+            <span id="grain-amount-val">15%</span>
+          </div>
+          <div class="slider-row">
+            <span>Vignette Falloff</span>
+            <input type="range" id="vignette-amount" min="0" max="100" value="40">
+            <span id="vignette-amount-val">40%</span>
+          </div>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="sunset-glow-toggle" checked>
+              <span>Tropical Sunset Horizon Flare</span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="halftone-toggle">
+              <span>Vintage Comic Halftone Pattern</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Content: Typography -->
+      <section class="tab-pane" id="tab-typography">
+        <div class="control-group">
+          <label class="group-title">Main Title</label>
+          <input type="text" id="title-text" class="text-input" value="GRAND THEFT" maxlength="32">
+          <div class="select-row">
+            <span>Title Font</span>
+            <select id="title-font" class="select-input">
+              <option value="Anton" selected>Anton (Bold Condensed)</option>
+              <option value="Bebas Neue">Bebas Neue (Heavy Poster)</option>
+            </select>
+          </div>
+          <div class="select-row">
+            <span>3D Lettering Style</span>
+            <select id="title-style" class="select-input">
+              <option value="sunset" selected>Sunset Gradient (Gold to Pink)</option>
+              <option value="chrome">Metallic Chrome</option>
+              <option value="comic">Comic Book White &amp; Inked</option>
+              <option value="neon">Neon Magenta Glow</option>
+            </select>
+          </div>
+          <div class="slider-row">
+            <span>3D Bevel Depth</span>
+            <input type="range" id="title-depth" min="0" max="24" value="12">
+            <span id="title-depth-val">12px</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Subtitle / Tagline</label>
+          <input type="text" id="subtitle-text" class="text-input" value="Vice City" maxlength="40">
+          <div class="select-row">
+            <span>Subtitle Font</span>
+            <select id="subtitle-font" class="select-input">
+              <option value="Pacifico" selected>Pacifico (Neon Script Signature)</option>
+              <option value="Bebas Neue">Bebas Neue (All Caps Block)</option>
+            </select>
+          </div>
+          <div class="color-row">
+            <span>Neon Glow Color</span>
+            <input type="color" id="subtitle-color" value="#ff2a8d">
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Location Banner Tag</label>
+          <input type="text" id="tagline-text" class="text-input" value="LEONIDA • SPECIAL EDITION" maxlength="50">
+        </div>
+      </section>
+
+      <!-- Tab Content: Badges & Emblems -->
+      <section class="tab-pane" id="tab-emblems">
+        <div class="control-group">
+          <label class="group-title">Stylized Roman "VI" Emblem</label>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="vi-toggle" checked>
+              <span>Show Custom Roman "VI" Emblem</span>
+            </label>
+          </div>
+          <div class="select-row">
+            <span>Position</span>
+            <select id="vi-position" class="select-input">
+              <option value="top-right" selected>Top Right</option>
+              <option value="center">Center Stage</option>
+              <option value="bottom-right">Bottom Right</option>
+            </select>
+          </div>
+          <div class="select-row">
+            <span>Finish</span>
+            <select id="vi-style" class="select-input">
+              <option value="sunset" selected>Sunset Metallic &amp; Palm Tree</option>
+              <option value="neon">Neon Cyan Glow</option>
+              <option value="gold">Pure Gold Bevel</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Mature Parody Rating Badge</label>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="badge-toggle" checked>
+              <span>Show Mature Parody Rating Badge</span>
+            </label>
+          </div>
+          <div class="select-row">
+            <span>Rating Class</span>
+            <select id="badge-rating" class="select-input">
+              <option value="VC" selected>VC (Vice Certified 17+)</option>
+              <option value="M">M (Mature 17+)</option>
+              <option value="18+">18+ (Adults Only)</option>
+            </select>
+          </div>
+          <div class="textarea-row">
+            <span>Humorous Content Descriptors</span>
+            <input type="text" id="badge-desc" class="text-input" value="Excessive Sunburn, Bad Decisions, Unregulated Speedboats, Synthwave Addiction">
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label class="group-title">Cover Authenticity Elements</label>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="barcode-toggle" checked>
+              <span>Authentic Retail Barcode &amp; Seal</span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <label class="switch-label">
+              <input type="checkbox" id="stars-toggle" checked>
+              <span>Wanted Level 5-Star Heat Meter</span>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab Content: Export -->
+      <section class="tab-pane" id="tab-export">
+        <div class="control-group">
+          <label class="group-title">Export Cover Art as PNG</label>
+          <p class="help-text">Instant full-resolution export for social media, wallpapers, and sharing.</p>
+          <div class="export-actions">
+            <button type="button" class="btn btn-export" data-size="1080x1080">
+              <strong>Export 1:1 Square</strong>
+              <small>1080 × 1080 px (Feed / Album Art)</small>
+            </button>
+            <button type="button" class="btn btn-export" data-size="1080x1350">
+              <strong>Export 4:5 Portrait</strong>
+              <small>1080 × 1350 px (Instagram / Poster)</small>
+            </button>
+            <button type="button" class="btn btn-export" data-size="1920x1080">
+              <strong>Export 16:9 Landscape</strong>
+              <small>1920 × 1080 px (Wallpaper / Loading Screen)</small>
+            </button>
+            <button type="button" id="btn-export-all" class="btn btn-primary">
+              ⚡ Export All 3 Sizes
+            </button>
+          </div>
+          <div id="export-status" class="export-status" role="status">Ready to create GTA 6 cover art</div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Right Workspace: Canvas Stage -->
+    <section class="studio-stage">
+      <div class="canvas-container" id="canvas-container">
+        <canvas id="cover-canvas" width="1080" height="1080" aria-label="GTA 6 Cover Art Preview"></canvas>
+      </div>
+      <div class="stage-footer">
+        <span class="stage-info" id="stage-info">Resolution: 1080 × 1080 px (1:1) • Layout: 4-Panel Quad</span>
+        <div class="stage-controls">
+          <button type="button" id="btn-stage-fit" class="btn btn-ghost btn-sm">Zoom to Fit</button>
+          <button type="button" id="btn-stage-100" class="btn btn-ghost btn-sm">100% View</button>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
