@@ -3,8 +3,8 @@ import { resolve, join } from "node:path";
 import { buildDossier, DOSSIER_MAX_BYTES } from "./vendor/makefun-app.ts";
 
 /**
- * GTA 6 Cover Art Studio - Dossier Generator
- * Optimized packaging harness with explicit screenshot boundary auditing.
+ * GTA 6 Cover Art Studio - Dossier Generator v1.0.2
+ * Production packaging harness with live make.fun badges and explicit boundary auditing.
  */
 export function auditDossierCaps(sizeBytes: number): boolean {
   return sizeBytes > 0 && sizeBytes <= DOSSIER_MAX_BYTES;
@@ -19,7 +19,7 @@ function main(): void {
     mkdirSync(screenshotsDir, { recursive: true });
   }
 
-  // Build the make.fun dossier with safe text boundaries
+  // Build the make.fun dossier with validated text and screenshot boundaries
   const dossierBytes = buildDossier(root, {
     text_max_bytes: Math.floor(DOSSIER_MAX_BYTES * 0.75),
     screenshots: {

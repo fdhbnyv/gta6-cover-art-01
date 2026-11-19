@@ -1,8 +1,8 @@
 # GTA 6 Cover Art Studio 🌴⚡
 
-[![built with make.fun](https://img.shields.io/badge/built%20with-make.fun-ff007f.svg?style=for-the-badge)](https://make.fun)
-[![bounty](https://img.shields.io/badge/bounty-gta6--cover--art-8A2BE2.svg?style=for-the-badge)](https://make.fun/bounties/gta6-cover-art)
-[![license: OFL & MIT](https://img.shields.io/badge/license-OFL%20%26%20MIT-00e5ff.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![make.fun · gta6-cover-art-01](https://make.fun/badge/gta6-cover-art-01.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![rank](https://make.fun/badge/gta6-cover-art-01/fdhbnyv/gta6-cover-art-01/rank.svg)](https://make.fun/bounty/gta6-cover-art-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
+[![reward](https://make.fun/badge/gta6-cover-art-01/fdhbnyv/gta6-cover-art-01/reward.svg)](https://make.fun/bounty/gta6-cover-art-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-cover-art-01)
 
 A high-performance, client-side procedural cover art generator inspired by the iconic Rockstar Games visual design language and the neon-soaked aesthetics of Vice City.
 
