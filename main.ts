@@ -1,10 +1,11 @@
 /**
- * GTA 6 Cover Art Studio - Native Pipeline Runner
+ * GTA 6 Cover Art Studio - Container Evaluator Pipeline
  * Implements procedural packaging, asset staging, and dossier compilation
- * for headless offline container evaluation.
+ * for headless offline container evaluation with MAKEFUN_BOT_DIR resolution.
  */
 import { cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildDossier, DOSSIER_MAX_BYTES } from "./vendor/makefun-app.ts";
 
 export interface CoverStudioVerification {
@@ -31,27 +32,25 @@ export function compileCoverStudioDossier(outPath: string): Uint8Array {
 }
 
 function run(): void {
-  const root = resolve(process.cwd());
-  const out = process.env.MAKEFUN_OUTPUT_DIR ?? (existsSync("/output") ? "/output" : root);
-  console.log(`[cover-studio] Staging assets from workspace root ${root} to target out ${out}`);
+  const here = fileURLToPath(new URL(".", import.meta.url));
+  const root = process.env.MAKEFUN_BOT_DIR ?? here;
+  const out = process.env.MAKEFUN_OUTPUT_DIR ?? "/output";
+  console.log(`[cover-studio] Evaluator staging assets from repository root ${root} to target out ${out}`);
 
-  const screenshotsDir = join(out, "screenshots");
-  if (!existsSync(screenshotsDir)) {
-    mkdirSync(screenshotsDir, { recursive: true });
-  }
-
-  const srcScreenshots = join(root, "screenshots");
-  if (existsSync(srcScreenshots) && srcScreenshots !== screenshotsDir) {
-    cpSync(srcScreenshots, screenshotsDir, { recursive: true });
-  }
+  mkdirSync(out, { recursive: true });
 
   const appDir = join(out, "app");
-  if (!existsSync(appDir)) {
-    mkdirSync(appDir, { recursive: true });
-  }
+  mkdirSync(appDir, { recursive: true });
   const srcApp = join(root, "app");
   if (existsSync(srcApp) && srcApp !== appDir) {
     cpSync(srcApp, appDir, { recursive: true });
+  }
+
+  const screenshotsDir = join(out, "screenshots");
+  mkdirSync(screenshotsDir, { recursive: true });
+  const srcScreenshots = join(root, "screenshots");
+  if (existsSync(srcScreenshots) && srcScreenshots !== screenshotsDir) {
+    cpSync(srcScreenshots, screenshotsDir, { recursive: true });
   }
 
   const dossier = compileCoverStudioDossier(out);
