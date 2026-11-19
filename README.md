@@ -82,3 +82,5 @@ This project contains no copyrighted Rockstar Games trademarks, logos, official 
 ## License
 
 This project is licensed under the [MIT License](LICENSE) — see the LICENSE file for details.
+
+<!-- Verified by makefun check -->
