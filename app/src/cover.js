@@ -1,201 +1,224 @@
-// Master Cover Art Rendering Pipeline
-// Coordinates layouts, image rendering, color grading, typography, and vector badges
+/**
+ * GTA 6 Cover Art Studio - Core Canvas Rendering Engine
+ * Composites multi-panel layouts, images, retro shaders, 3D typography, and vector badges.
+ */
 
-import { getLayoutPanels, drawLayoutBorders } from './layouts.js';
-import { applyColorGrade, drawSunsetHorizonGlow, drawVignette, drawFilmGrain, drawHalftone } from './filters.js';
-import { drawTitle, drawSubtitle, drawTagline } from './typography.js';
-import { drawRomanVI, drawParodyBadge, drawBarcode, drawHeatStars } from './emblems.js';
+import { LAYOUT_DEFINITIONS, clipToPolygon, drawGutterBorders } from "./layouts.js";
+import { applyColorGrade, applyFilmGrain, applyRadialVignette, applyHalftone } from "./filters.js";
+import { drawExtrudedTitle, drawScriptSubtitle } from "./typography.js";
+import { drawRomanVI, drawMatureBadge, drawWantedMeter, drawBarcode } from "./emblems.js";
 
-/** Sets canvas dimensions for requested aspect ratio */
-export function setCanvasAspectRatio(canvas, ratio) {
-  let w = 1080;
-  let h = 1080;
-  if (ratio === '4:5') {
-    w = 1080;
-    h = 1350;
-  } else if (ratio === '16:9') {
-    w = 1920;
-    h = 1080;
+/**
+ * Calculates canvas pixel dimensions for a given aspect ratio and scale multiplier
+ */
+export function getDimensionsForAspect(aspect, multiplier = 1.0) {
+  switch (aspect) {
+    case "1-1":
+      return { width: Math.round(1080 * multiplier), height: Math.round(1080 * multiplier) };
+    case "9-16":
+      return { width: Math.round(1080 * multiplier), height: Math.round(1920 * multiplier) };
+    case "16-9":
+    default:
+      return { width: Math.round(1920 * multiplier), height: Math.round(1080 * multiplier) };
   }
-  if (canvas.width !== w || canvas.height !== h) {
-    canvas.width = w;
-    canvas.height = h;
-  }
-  return { w, h };
 }
 
-/** Master render function */
-export function drawCover(canvas, state, loadedImages) {
-  const { w, h } = setCanvasAspectRatio(canvas, state.ratio);
-  const ctx = canvas.getContext('2d');
+/**
+ * Renders fallback procedural graphic if image asset is loading or missing
+ */
+function drawProceduralFallback(ctx, poly, index) {
+  // Compute polygon bounding box
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of poly) {
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const w = maxX - minX;
+  const h = maxY - minY;
 
-  // 1. Dark base background
-  ctx.fillStyle = '#08040f';
-  ctx.fillRect(0, 0, w, h);
+  // Vibrant synthwave gradient backgrounds
+  const grad = ctx.createLinearGradient(minX, minY, minX, maxY);
+  const colorSets = [
+    ["#ff2a85", "#7209b7", "#150b2e"],
+    ["#00e5ff", "#0077b6", "#03045e"],
+    ["#ff7700", "#e63946", "#3a0ca3"],
+    ["#9d4edd", "#ff007f", "#240046"],
+    ["#f4c430", "#e76f51", "#264653"]
+  ];
+  const set = colorSets[index % colorSets.length];
+  grad.addColorStop(0, set[0]);
+  grad.addColorStop(0.5, set[1]);
+  grad.addColorStop(1, set[2]);
 
-  // 2. Render Layout Panels & Photos
-  const panels = getLayoutPanels(state.layout, w, h);
+  ctx.fillStyle = grad;
+  ctx.fillRect(minX, minY, w, h);
 
+  // Stylized sun/horizon disk
+  ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+  ctx.beginPath();
+  ctx.arc(minX + w * 0.5, minY + h * 0.55, Math.min(w, h) * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * Master Cover Rendering Function
+ */
+export function renderCover(canvas, state, imageCache = {}) {
+  const { width, height } = getDimensionsForAspect(state.aspect, state.resolutionScale || 1.0);
+
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return;
+
+  // 1. Clear backdrop
+  ctx.fillStyle = "#0c0a14";
+  ctx.fillRect(0, 0, width, height);
+
+  // 2. Resolve layout & panels
+  const layoutDef = LAYOUT_DEFINITIONS[state.layout] || LAYOUT_DEFINITIONS.quad;
+  const panels = layoutDef.getPolygons(width, height, 12);
+
+  // 3. Render individual panel images with transform matrices
   panels.forEach((panel, idx) => {
-    const pState = (state.panels && state.panels[idx]) || {};
-    const imgKey = pState.customUrl ? `custom_${idx}` : (pState.sample || 'boulevard');
-    const img = loadedImages[imgKey] || loadedImages['boulevard'];
+    const slotState = (state.slots && state.slots[idx]) || {
+      sample: `sample-${(idx % 4) + 1}.jpg`,
+      zoom: 1.0,
+      panX: 0,
+      panY: 0
+    };
+
+    const poly = panel.polygon;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const [x, y] of poly) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const boxW = maxX - minX;
+    const boxH = maxY - minY;
 
     ctx.save();
-    panel.clip(ctx);
+    clipToPolygon(ctx, poly);
 
-    if (img && img.naturalWidth) {
-      // Calculate scaling to cover panel bounds
-      const bounds = panel.bounds;
-      const zoom = (pState.zoom || 100) / 100;
-      const baseScale = Math.max(bounds.w / img.naturalWidth, bounds.h / img.naturalHeight);
-      const scale = baseScale * zoom;
+    const imgKey = slotState.customDataUrl || slotState.sample || `sample-${(idx % 4) + 1}.jpg`;
+    const img = imageCache[imgKey];
 
-      const dw = img.naturalWidth * scale;
-      const dh = img.naturalHeight * scale;
+    if (img && img.complete && img.naturalWidth > 0) {
+      // Calculate aspect-fill scale
+      const imgRatio = img.naturalWidth / img.naturalHeight;
+      const boxRatio = boxW / boxH;
+      let drawW, drawH;
 
-      const panXOffset = ((pState.panX || 0) / 100) * (bounds.w * 0.5);
-      const panYOffset = ((pState.panY || 0) / 100) * (bounds.h * 0.5);
+      if (boxRatio > imgRatio) {
+        drawW = boxW;
+        drawH = boxW / imgRatio;
+      } else {
+        drawH = boxH;
+        drawW = boxH * imgRatio;
+      }
 
-      const cx = bounds.x + bounds.w / 2 + panXOffset;
-      const cy = bounds.y + bounds.h / 2 + panYOffset;
+      const zoom = slotState.zoom || 1.0;
+      drawW *= zoom;
+      drawH *= zoom;
 
-      ctx.save();
-      ctx.translate(cx, cy);
+      const drawX = minX + (boxW - drawW) / 2 + (slotState.panX || 0);
+      const drawY = minY + (boxH - drawH) / 2 + (slotState.panY || 0);
 
-      if (pState.flipH) ctx.scale(-1, 1);
-      if (pState.flipV) ctx.scale(1, -1);
-
-      ctx.drawImage(img, -dw / 2, -dh / 2, dw, dh);
-      ctx.restore();
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } else {
-      // Fallback placeholder pattern
-      ctx.fillStyle = '#1c102a';
-      ctx.fillRect(panel.bounds.x, panel.bounds.y, panel.bounds.w, panel.bounds.h);
+      drawProceduralFallback(ctx, poly, idx);
     }
 
     ctx.restore();
   });
 
-  // 3. Comic Panel Inking Dividers
-  const bw = state.borderWidth != null ? state.borderWidth : 10;
-  const bc = state.borderColor || '#050308';
-  drawLayoutBorders(ctx, w, h, state.layout, bw, bc);
+  // 4. Color grading shader pass
+  applyColorGrade(ctx, width, height, state.filter, state.filterIntensity);
 
-  // 4. Color Grading
-  applyColorGrade(ctx, w, h, state.grade || 'vice-sunset', state.gradeIntensity != null ? state.gradeIntensity : 85);
-
-  // 5. Cinematic Overlays
-  if (state.sunsetGlow) {
-    drawSunsetHorizonGlow(ctx, w, h);
-  }
-
-  if (state.halftone) {
-    drawHalftone(ctx, w, h);
-  }
-
+  // 5. Procedural film grain noise
   if (state.grain > 0) {
-    drawFilmGrain(ctx, w, h, state.grain);
+    applyFilmGrain(ctx, width, height, state.grain);
   }
 
+  // 6. Halftone comic printing screen
+  if (state.halftone > 0) {
+    applyHalftone(ctx, width, height, state.halftone);
+  }
+
+  // 7. Comic book border gutters
+  drawGutterBorders(ctx, state.layout, width, height, 10, "#08060f");
+
+  // 8. Radial vignette overlay
   if (state.vignette > 0) {
-    drawVignette(ctx, w, h, state.vignette);
+    applyRadialVignette(ctx, width, height, state.vignette);
   }
 
-  // 6. Wanted Heat Stars (Top-Left)
-  if (state.starsShow) {
-    const starSize = Math.round(w * 0.024);
-    drawHeatStars(ctx, Math.round(w * 0.04), Math.round(h * 0.05), starSize, 5);
-  }
+  // 9. Typography and Emblems Layer
+  const isPortrait = state.aspect === "9-16";
+  const isSquare = state.aspect === "1-1";
 
-  // 7. Roman "VI" Emblem
-  if (state.viShow) {
-    let viX, viY, viSize;
-    if (state.viPosition === 'center') {
-      viX = w / 2;
-      viY = h * 0.38;
-      viSize = Math.round(Math.min(w, h) * 0.32);
-    } else if (state.viPosition === 'bottom-right') {
-      viX = w - Math.round(w * 0.14);
-      viY = h - Math.round(h * 0.22);
-      viSize = Math.round(Math.min(w, h) * 0.20);
-    } else {
-      // Default: top-right
-      viX = w - Math.round(w * 0.14);
-      viY = Math.round(h * 0.14);
-      viSize = Math.round(Math.min(w, h) * 0.22);
-    }
-    drawRomanVI(ctx, viX, viY, viSize, state.viStyle || 'sunset');
-  }
-
-  // 8. Typography: Title, Subtitle, Tagline
-  let titleY = Math.round(h * 0.80);
-  if (state.ratio === '16:9') {
-    titleY = Math.round(h * 0.82);
-  } else if (state.ratio === '4:5') {
-    titleY = Math.round(h * 0.81);
-  }
-
-  let titleSize = Math.round(w * 0.125);
-  ctx.font = `900 ${titleSize}px '${state.titleFont || 'Anton'}', sans-serif`;
-  while (ctx.measureText((state.titleText || '').toUpperCase()).width > w * 0.86 && titleSize > 24) {
-    titleSize -= 4;
-    ctx.font = `900 ${titleSize}px '${state.titleFont || 'Anton'}', sans-serif`;
-  }
-
-  // Tagline Ribbon (above title)
-  if (state.taglineText) {
-    drawTagline(ctx, state.taglineText, w / 2, titleY - titleSize * 0.68, Math.round(titleSize * 0.18));
-  }
+  // Calculate proportional title sizing
+  const titleFontSize = Math.round(width * (isPortrait ? 0.088 : isSquare ? 0.075 : 0.065));
+  const titleY = Math.round(height * (isPortrait ? 0.12 : isSquare ? 0.14 : 0.15));
 
   // Main 3D Title
-  drawTitle(
-    ctx,
-    state.titleText || 'GRAND THEFT',
-    state.titleFont || 'Anton',
-    w / 2,
-    titleY,
-    titleSize,
-    state.titleStyle || 'sunset',
-    state.titleDepth != null ? state.titleDepth : 12,
-  );
-
-  // Subtitle / Script Signature (below title)
-  if (state.subtitleText) {
-    const subSize = Math.round(titleSize * 0.62);
-    drawSubtitle(
-      ctx,
-      state.subtitleText,
-      state.subtitleFont || 'Pacifico',
-      w / 2,
-      titleY + titleSize * 0.48,
-      subSize,
-      state.subtitleColor || '#ff2a8d',
-    );
+  if (state.titleTop) {
+    drawExtrudedTitle(ctx, state.titleTop, width / 2, titleY, {
+      fontSize: titleFontSize,
+      depth: Math.round(titleFontSize * 0.18),
+      faceGradient: ["#ffffff", "#ffe6f0", "#ff2a85", "#7209b7"],
+      strokeColor: "#000000",
+      strokeWidth: Math.round(titleFontSize * 0.14)
+    });
   }
 
-  // 9. Mature Parody Badge (Bottom-Left)
-  if (state.badgeShow) {
-    const badgeW = Math.round(w * 0.24);
-    const badgeH = Math.round(badgeW * 0.42);
-    const badgeX = Math.round(w * 0.035);
-    const badgeY = h - badgeH - Math.round(h * 0.035);
-    drawParodyBadge(ctx, badgeX, badgeY, badgeW, badgeH, state.badgeRating || 'VC', state.badgeDesc);
+  // Script Subtitle ("Vice City")
+  if (state.titleSub) {
+    const scriptFontSize = Math.round(titleFontSize * 0.85);
+    const scriptY = titleY + Math.round(titleFontSize * 0.55);
+    drawScriptSubtitle(ctx, state.titleSub, width / 2, scriptY, {
+      fontSize: scriptFontSize,
+      rotation: -0.11,
+      glowColor: "#ff2a85"
+    });
   }
 
-  // 10. Authentic Retail Barcode (Bottom-Right)
-  if (state.barcodeShow) {
-    const codeW = Math.round(w * 0.18);
-    const codeH = Math.round(codeW * 0.25);
-    const codeX = w - codeW - Math.round(w * 0.035);
-    const codeY = h - codeH - Math.round(h * 0.035);
-    drawBarcode(ctx, codeX, codeY, codeW, codeH);
+  // Roman VI 3D Emblem
+  if (state.showViEmblem) {
+    const emblemScale = (width / 1920) * (isPortrait ? 1.3 : isSquare ? 1.15 : 1.0);
+    const emblemX = width * (isPortrait ? 0.5 : 0.85);
+    const emblemY = height * (isPortrait ? 0.26 : 0.18);
+    drawRomanVI(ctx, emblemX, emblemY, emblemScale, state.viStyle || "vice-gradient");
   }
 
-  // 11. Thin fine inner poster frame
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(16, 16, w - 32, h - 32);
-  ctx.restore();
+  // Satirical Mature 17+ Badge
+  if (state.showMatureBadge) {
+    const badgeW = Math.round(width * 0.055 * (isPortrait ? 1.6 : 1.0));
+    const badgeH = Math.round(badgeW * 1.36);
+    const badgeMargin = Math.round(width * 0.022);
+    drawMatureBadge(ctx, badgeMargin, height - badgeH - badgeMargin, badgeW, badgeH);
+  }
+
+  // 5-Star Wanted Level Meter
+  if (state.showWantedMeter) {
+    const starSize = Math.round(width * 0.012 * (isPortrait ? 1.8 : 1.0));
+    const wantedX = width * (isPortrait ? 0.52 : 0.72);
+    const wantedY = height - Math.round(height * 0.045);
+    drawWantedMeter(ctx, wantedX, wantedY, 5, state.wantedStars || 5, starSize);
+  }
+
+  // Commercial Barcode
+  if (state.showBarcode) {
+    const barW = Math.round(width * 0.085 * (isPortrait ? 1.5 : 1.0));
+    const barH = Math.round(barW * 0.28);
+    const barMargin = Math.round(width * 0.022);
+    drawBarcode(ctx, width - barW - barMargin, height - barH - barMargin, barW, barH);
+  }
 }

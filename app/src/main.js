@@ -1,698 +1,422 @@
-// Main application controller for Vice Cover Studio
+/**
+ * GTA 6 Cover Art Studio - Main Client Application Controller
+ * Orchestrates reactive state, canvas render passes, and high-DPI export pipelines.
+ */
 
-import { drawCover, setCanvasAspectRatio } from './cover.js';
-import { PRESETS } from './presets.js';
-import { runShot } from './shots.js';
+import { PRESETS, getPreset } from "./presets.js";
+import { LAYOUT_DEFINITIONS } from "./layouts.js";
+import { renderCover, getDimensionsForAspect } from "./cover.js";
+import { parseUrlState } from "./shots.js";
 
-const canvas = document.getElementById('cover-canvas');
-const exportStatus = document.getElementById('export-status');
-const stageInfo = document.getElementById('stage-info');
+// Global Application State Store
+const state = {
+  ...getPreset("quad-comic"),
+  resolutionScale: 1.0
+};
 
-// In-memory cache of loaded Image objects
-const loadedImages = {};
+// Apply URL search query parameter overrides if present
+const urlOverrides = parseUrlState();
+Object.assign(state, urlOverrides);
 
-// Active editing state
-let state = JSON.parse(JSON.stringify(PRESETS['vice-sunset']));
-let activePanelIndex = 0;
+// In-Memory Image Cache
+const imageCache = {};
 
-/** Utility to load an image from a URL */
-export function loadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => {
-      console.warn('Failed to load image:', url);
-      resolve(null);
-    };
-    img.src = url;
-  });
-}
-
-/** Preload all included themed sample photos */
-async function preloadSamples() {
-  const samples = [
-    { key: 'boulevard', path: './samples/boulevard.jpg' },
-    { key: 'pier', path: './samples/pier.jpg' },
-    { key: 'rooftop', path: './samples/rooftop.jpg' },
-    { key: 'neoncar', path: './samples/neoncar.jpg' },
-  ];
-
-  await Promise.all(
-    samples.map(async ({ key, path }) => {
-      const img = await loadImage(path);
-      if (img) loadedImages[key] = img;
+// Preload standard sample character images
+function preloadSampleImages() {
+  const samples = ["sample-1.jpg", "sample-2.jpg", "sample-3.jpg", "sample-4.jpg"];
+  return Promise.all(
+    samples.map((name) => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          imageCache[name] = img;
+          resolve(img);
+        };
+        img.onerror = () => {
+          // Resolve anyway so procedural fallbacks can render without blocking
+          resolve(null);
+        };
+        img.src = `./samples/${name}`;
+      });
     })
   );
 }
 
-/** Redraws canvas based on current state */
-export function redraw() {
-  if (document.fonts) {
-    document.fonts.ready.then(() => {
-      drawCover(canvas, state, loadedImages);
-      updateStageInfo();
-    });
-  } else {
-    drawCover(canvas, state, loadedImages);
-    updateStageInfo();
+// Canvas & DOM Element References
+const canvas = document.getElementById("cover-canvas");
+const renderIndicator = document.getElementById("render-indicator");
+const hudAspect = document.getElementById("hud-aspect");
+const hudLayout = document.getElementById("hud-layout");
+const hudFilter = document.getElementById("hud-filter");
+
+let renderScheduled = false;
+
+/**
+ * Triggers a debounced canvas render
+ */
+export function requestRender() {
+  if (renderScheduled) return;
+  renderScheduled = true;
+
+  if (renderIndicator) renderIndicator.classList.remove("hidden");
+
+  requestAnimationFrame(() => {
+    renderCover(canvas, state, imageCache);
+    updateHud();
+    renderScheduled = false;
+    if (renderIndicator) renderIndicator.classList.add("hidden");
+    window.dispatchEvent(new CustomEvent("cover-art-ready", { detail: { state } }));
+  });
+}
+
+/**
+ * Updates Viewport HUD overlay badges
+ */
+function updateHud() {
+  const { width, height } = getDimensionsForAspect(state.aspect);
+  if (hudAspect) {
+    const aspectNames = { "16-9": "16:9 Cinematic", "1-1": "1:1 Square Album", "9-16": "9:16 Story Poster" };
+    hudAspect.textContent = `${aspectNames[state.aspect] || state.aspect} (${width} × ${height})`;
+  }
+  if (hudLayout) {
+    const layoutObj = LAYOUT_DEFINITIONS[state.layout];
+    hudLayout.textContent = `Layout: ${layoutObj ? layoutObj.name : state.layout}`;
+  }
+  if (hudFilter) {
+    hudFilter.textContent = `Shader: ${state.filter} (${Math.round(state.filterIntensity * 100)}%)`;
   }
 }
 
-/** Updates resolution and layout label in stage footer */
-function updateStageInfo() {
-  if (!stageInfo) return;
-  const ratioLabel = state.ratio === '16:9' ? '1920 × 1080 px (16:9)' : state.ratio === '4:5' ? '1080 × 1350 px (4:5)' : '1080 × 1080 px (1:1)';
-  const layoutLabel = state.layout.toUpperCase();
-  stageInfo.textContent = `Resolution: ${ratioLabel} • Layout: ${layoutLabel}`;
-}
+/**
+ * Rebuilds Panel Slot Controls when layout changes
+ */
+function rebuildSlotControls() {
+  const container = document.getElementById("slot-controls-container");
+  if (!container) return;
 
-/** Syncs HTML input values to match current state */
-function syncUI() {
-  // Tabs & Layout
-  document.querySelectorAll('.layout-card').forEach((card) => {
-    card.classList.toggle('active', card.dataset.layout === state.layout);
-  });
+  container.innerHTML = "";
+  const layout = LAYOUT_DEFINITIONS[state.layout] || LAYOUT_DEFINITIONS.quad;
 
-  document.querySelectorAll('.btn-toggle').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.ratio === state.ratio);
-  });
-
-  const bw = document.getElementById('border-width');
-  const bwVal = document.getElementById('border-width-val');
-  if (bw && bwVal) {
-    bw.value = state.borderWidth;
-    bwVal.textContent = `${state.borderWidth}px`;
-  }
-
-  const bc = document.getElementById('border-color');
-  if (bc) bc.value = state.borderColor;
-
-  // Grade & Effects
-  document.querySelectorAll('.grade-card').forEach((card) => {
-    card.classList.toggle('active', card.dataset.grade === state.grade);
-  });
-
-  const gi = document.getElementById('grade-intensity');
-  const giVal = document.getElementById('grade-intensity-val');
-  if (gi && giVal) {
-    gi.value = state.gradeIntensity;
-    giVal.textContent = `${state.gradeIntensity}%`;
-  }
-
-  const grain = document.getElementById('grain-amount');
-  const grainVal = document.getElementById('grain-amount-val');
-  if (grain && grainVal) {
-    grain.value = state.grain;
-    grainVal.textContent = `${state.grain}%`;
-  }
-
-  const vig = document.getElementById('vignette-amount');
-  const vigVal = document.getElementById('vignette-amount-val');
-  if (vig && vigVal) {
-    vig.value = state.vignette;
-    vigVal.textContent = `${state.vignette}%`;
-  }
-
-  const sunsetGlow = document.getElementById('sunset-glow-toggle');
-  if (sunsetGlow) sunsetGlow.checked = !!state.sunsetGlow;
-
-  const halftone = document.getElementById('halftone-toggle');
-  if (halftone) halftone.checked = !!state.halftone;
-
-  // Typography
-  const titleText = document.getElementById('title-text');
-  if (titleText) titleText.value = state.titleText;
-
-  const titleFont = document.getElementById('title-font');
-  if (titleFont) titleFont.value = state.titleFont;
-
-  const titleStyle = document.getElementById('title-style');
-  if (titleStyle) titleStyle.value = state.titleStyle;
-
-  const titleDepth = document.getElementById('title-depth');
-  const titleDepthVal = document.getElementById('title-depth-val');
-  if (titleDepth && titleDepthVal) {
-    titleDepth.value = state.titleDepth;
-    titleDepthVal.textContent = `${state.titleDepth}px`;
-  }
-
-  const subText = document.getElementById('subtitle-text');
-  if (subText) subText.value = state.subtitleText;
-
-  const subFont = document.getElementById('subtitle-font');
-  if (subFont) subFont.value = state.subtitleFont;
-
-  const subColor = document.getElementById('subtitle-color');
-  if (subColor) subColor.value = state.subtitleColor;
-
-  const tagline = document.getElementById('tagline-text');
-  if (tagline) tagline.value = state.taglineText;
-
-  // Emblems & Badges
-  const viToggle = document.getElementById('vi-toggle');
-  if (viToggle) viToggle.checked = !!state.viShow;
-
-  const viPos = document.getElementById('vi-position');
-  if (viPos) viPos.value = state.viPosition;
-
-  const viStyle = document.getElementById('vi-style');
-  if (viStyle) viStyle.value = state.viStyle;
-
-  const badgeToggle = document.getElementById('badge-toggle');
-  if (badgeToggle) badgeToggle.checked = !!state.badgeShow;
-
-  const badgeRating = document.getElementById('badge-rating');
-  if (badgeRating) badgeRating.value = state.badgeRating;
-
-  const badgeDesc = document.getElementById('badge-desc');
-  if (badgeDesc) badgeDesc.value = state.badgeDesc;
-
-  const barcodeToggle = document.getElementById('barcode-toggle');
-  if (barcodeToggle) barcodeToggle.checked = !!state.barcodeShow;
-
-  const starsToggle = document.getElementById('stars-toggle');
-  if (starsToggle) starsToggle.checked = !!state.starsShow;
-
-  // Active panel
-  syncPanelUI();
-}
-
-/** Syncs sliders for the currently selected panel */
-function syncPanelUI() {
-  document.querySelectorAll('.panel-select-btn').forEach((btn) => {
-    btn.classList.toggle('active', Number(btn.dataset.panelIdx) === activePanelIndex);
-  });
-
-  const p = (state.panels && state.panels[activePanelIndex]) || { panX: 0, panY: 0, zoom: 100 };
-
-  const panX = document.getElementById('panel-pan-x');
-  const panXVal = document.getElementById('panel-pan-x-val');
-  if (panX && panXVal) {
-    panX.value = p.panX || 0;
-    panXVal.textContent = `${p.panX || 0}%`;
-  }
-
-  const panY = document.getElementById('panel-pan-y');
-  const panYVal = document.getElementById('panel-pan-y-val');
-  if (panY && panYVal) {
-    panY.value = p.panY || 0;
-    panYVal.textContent = `${p.panY || 0}%`;
-  }
-
-  const zoom = document.getElementById('panel-zoom');
-  const zoomVal = document.getElementById('panel-zoom-val');
-  if (zoom && zoomVal) {
-    zoom.value = p.zoom || 100;
-    zoomVal.textContent = `${p.zoom || 100}%`;
-  }
-}
-
-/** Applies a named preset */
-export function applyPreset(presetName) {
-  const p = PRESETS[presetName];
-  if (!p) return;
-  state = JSON.parse(JSON.stringify(p));
-
-  document.querySelectorAll('.preset-btn').forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.preset === presetName);
-  });
-
-  syncUI();
-  redraw();
-}
-
-/** Exports canvas to a downloadable PNG */
-export function exportPNG(ratioOverride = null, filename = null) {
-  const originalRatio = state.ratio;
-  if (ratioOverride) {
-    state.ratio = ratioOverride;
-    drawCover(canvas, state, loadedImages);
-  }
-
-  const name = filename || `gta6-cover-${state.ratio.replace(':', 'x')}-${Date.now()}.png`;
-
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = name;
-    a.click();
-
-    if (exportStatus) {
-      exportStatus.textContent = `✓ Exported ${name} (${(blob.size / 1024).toFixed(0)} KB)`;
-    }
-
-    if (ratioOverride && ratioOverride !== originalRatio) {
-      state.ratio = originalRatio;
-      drawCover(canvas, state, loadedImages);
-    }
-  }, 'image/png');
-}
-
-/** Export all 3 standard sizes */
-export async function exportAllSizes() {
-  const sizes = ['1:1', '4:5', '16:9'];
-  for (const s of sizes) {
-    exportPNG(s, `gta6-cover-${s.replace(':', 'x')}.png`);
-    await new Promise((r) => setTimeout(r, 400));
-  }
-}
-
-/** Initialize event listeners */
-function setupEvents() {
-  // Tabs
-  document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
-      document.querySelectorAll('.tab-pane').forEach((p) => p.classList.remove('active'));
-      btn.classList.add('active');
-      const pane = document.getElementById(btn.dataset.tab);
-      if (pane) pane.classList.add('active');
-    });
-  });
-
-  // Preset Buttons
-  document.querySelectorAll('.preset-btn').forEach((btn) => {
-    btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
-  });
-
-  // Layout selection
-  document.querySelectorAll('.layout-card').forEach((card) => {
-    card.addEventListener('click', () => {
-      state.layout = card.dataset.layout;
-      syncUI();
-      redraw();
-    });
-  });
-
-  // Aspect Ratio buttons
-  document.querySelectorAll('.btn-toggle').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.ratio = btn.dataset.ratio;
-      syncUI();
-      redraw();
-    });
-  });
-
-  // Border controls
-  const bw = document.getElementById('border-width');
-  if (bw) {
-    bw.addEventListener('input', (e) => {
-      state.borderWidth = Number(e.target.value);
-      document.getElementById('border-width-val').textContent = `${state.borderWidth}px`;
-      redraw();
+  // Ensure state.slots has entries for each slot
+  if (!state.slots) state.slots = [];
+  while (state.slots.length < layout.slotsCount) {
+    const idx = state.slots.length;
+    state.slots.push({
+      id: idx,
+      sample: `sample-${(idx % 4) + 1}.jpg`,
+      zoom: 1.0,
+      panX: 0,
+      panY: 0
     });
   }
 
-  const bc = document.getElementById('border-color');
-  if (bc) {
-    bc.addEventListener('input', (e) => {
-      state.borderColor = e.target.value;
-      redraw();
+  layout.slots.forEach((slotDef, idx) => {
+    const slotState = state.slots[idx] || (state.slots[idx] = {
+      id: idx,
+      sample: `sample-${(idx % 4) + 1}.jpg`,
+      zoom: 1.0,
+      panX: 0,
+      panY: 0
     });
-  }
 
-  // Panel selector
-  document.querySelectorAll('.panel-select-btn').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      activePanelIndex = Number(btn.dataset.panelIdx);
-      syncPanelUI();
-    });
-  });
+    const card = document.createElement("div");
+    card.className = "slot-item-card";
 
-  // Custom photo upload (client-side only)
-  const photoUpload = document.getElementById('photo-upload');
-  if (photoUpload) {
-    photoUpload.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const url = URL.createObjectURL(file);
-      const img = await loadImage(url);
-      if (img) {
-        const key = `custom_${activePanelIndex}`;
-        loadedImages[key] = img;
-        if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-        state.panels[activePanelIndex].customUrl = key;
-        redraw();
-        if (exportStatus) exportStatus.textContent = `Loaded photo into Panel ${activePanelIndex + 1}`;
+    card.innerHTML = `
+      <div class="slot-item-header">
+        <span class="slot-name">Slot ${idx + 1}: ${slotDef.name}</span>
+        <label class="slot-file-btn">
+          Upload
+          <input type="file" accept="image/*" class="sr-only slot-file-input" data-slot="${idx}">
+        </label>
+      </div>
+      <div class="slider-control">
+        <div class="slider-label-row">
+          <label>Zoom</label>
+          <span class="slider-val zoom-val">${Math.round(slotState.zoom * 100)}%</span>
+        </div>
+        <input type="range" min="50" max="250" value="${Math.round(slotState.zoom * 100)}" class="ui-slider slot-zoom-slider" data-slot="${idx}">
+      </div>
+      <div class="slider-control">
+        <div class="slider-label-row">
+          <label>Pan Offset X</label>
+          <span class="slider-val panx-val">${slotState.panX}px</span>
+        </div>
+        <input type="range" min="-300" max="300" value="${slotState.panX}" class="ui-slider slot-panx-slider" data-slot="${idx}">
+      </div>
+    `;
+
+    // File Upload Handler
+    const fileInput = card.querySelector(".slot-file-input");
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (rev) => {
+          const img = new Image();
+          img.onload = () => {
+            const dataUrl = rev.target.result;
+            imageCache[dataUrl] = img;
+            slotState.customDataUrl = dataUrl;
+            requestRender();
+          };
+          img.src = rev.target.result;
+        };
+        reader.readAsDataURL(file);
       }
     });
+
+    // Zoom Slider Handler
+    const zoomSlider = card.querySelector(".slot-zoom-slider");
+    zoomSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value, 10);
+      slotState.zoom = val / 100;
+      card.querySelector(".zoom-val").textContent = `${val}%`;
+      requestRender();
+    });
+
+    // Pan X Slider Handler
+    const panxSlider = card.querySelector(".slot-panx-slider");
+    panxSlider.addEventListener("input", (e) => {
+      const val = parseInt(e.target.value, 10);
+      slotState.panX = val;
+      card.querySelector(".panx-val").textContent = `${val}px`;
+      requestRender();
+    });
+
+    container.appendChild(card);
+  });
+}
+
+/**
+ * Downloads canvas as image file with memory cleanup and revocation
+ */
+function downloadArtwork(filename, scale = 1.0, mime = "image/png", quality = 1.0) {
+  console.debug(`[export] Rendering artwork export: ${filename} at ${scale}x scale (${mime})`);
+  const exportCanvas = document.createElement("canvas");
+  const exportState = { ...state, resolutionScale: scale };
+  renderCover(exportCanvas, exportState, imageCache);
+
+  exportCanvas.toBlob(
+    (blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    mime,
+    quality
+  );
+}
+
+/**
+ * Initializes all sidebar controls and event listeners
+ */
+function initControls() {
+  // Preset Select
+  const presetSelect = document.getElementById("preset-select");
+  if (presetSelect) {
+    presetSelect.value = state.preset || "quad-comic";
+    presetSelect.addEventListener("change", (e) => {
+      const newPreset = getPreset(e.target.value);
+      Object.assign(state, newPreset);
+      syncControlsToState();
+      rebuildSlotControls();
+      requestRender();
+    });
   }
 
-  // Sample photo picker
-  document.querySelectorAll('.sample-thumb').forEach((thumb) => {
-    thumb.addEventListener('click', () => {
-      const sampleKey = thumb.dataset.sample;
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].customUrl = null;
-      state.panels[activePanelIndex].sample = sampleKey;
-      redraw();
+  // Aspect Ratio Buttons
+  const ratioPills = document.querySelectorAll(".ratio-pill");
+  ratioPills.forEach((pill) => {
+    pill.addEventListener("click", () => {
+      ratioPills.forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      state.aspect = pill.getAttribute("data-aspect");
+      requestRender();
     });
   });
 
-  // Active panel transform sliders
-  const panX = document.getElementById('panel-pan-x');
-  if (panX) {
-    panX.addEventListener('input', (e) => {
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].panX = Number(e.target.value);
-      document.getElementById('panel-pan-x-val').textContent = `${e.target.value}%`;
-      redraw();
-    });
-  }
-
-  const panY = document.getElementById('panel-pan-y');
-  if (panY) {
-    panY.addEventListener('input', (e) => {
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].panY = Number(e.target.value);
-      document.getElementById('panel-pan-y-val').textContent = `${e.target.value}%`;
-      redraw();
-    });
-  }
-
-  const zoom = document.getElementById('panel-zoom');
-  if (zoom) {
-    zoom.addEventListener('input', (e) => {
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].zoom = Number(e.target.value);
-      document.getElementById('panel-zoom-val').textContent = `${e.target.value}%`;
-      redraw();
-    });
-  }
-
-  // Flip buttons
-  const btnFlipH = document.getElementById('btn-flip-h');
-  if (btnFlipH) {
-    btnFlipH.addEventListener('click', () => {
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].flipH = !state.panels[activePanelIndex].flipH;
-      redraw();
-    });
-  }
-
-  const btnFlipV = document.getElementById('btn-flip-v');
-  if (btnFlipV) {
-    btnFlipV.addEventListener('click', () => {
-      if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-      state.panels[activePanelIndex].flipV = !state.panels[activePanelIndex].flipV;
-      redraw();
-    });
-  }
-
-  const btnResetPanel = document.getElementById('btn-reset-panel');
-  if (btnResetPanel) {
-    btnResetPanel.addEventListener('click', () => {
-      if (state.panels[activePanelIndex]) {
-        state.panels[activePanelIndex].panX = 0;
-        state.panels[activePanelIndex].panY = 0;
-        state.panels[activePanelIndex].zoom = 100;
-        state.panels[activePanelIndex].flipH = false;
-        state.panels[activePanelIndex].flipV = false;
-        syncPanelUI();
-        redraw();
-      }
-    });
-  }
-
-  // Color grade cards
-  document.querySelectorAll('.grade-card').forEach((card) => {
-    card.addEventListener('click', () => {
-      state.grade = card.dataset.grade;
-      syncUI();
-      redraw();
+  // Layout Buttons
+  const layoutPills = document.querySelectorAll(".layout-pill");
+  layoutPills.forEach((pill) => {
+    pill.addEventListener("click", () => {
+      layoutPills.forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      state.layout = pill.getAttribute("data-layout");
+      rebuildSlotControls();
+      requestRender();
     });
   });
 
-  const gi = document.getElementById('grade-intensity');
-  if (gi) {
-    gi.addEventListener('input', (e) => {
-      state.gradeIntensity = Number(e.target.value);
-      document.getElementById('grade-intensity-val').textContent = `${e.target.value}%`;
-      redraw();
+  // Filter Buttons
+  const filterPills = document.querySelectorAll(".filter-pill");
+  filterPills.forEach((pill) => {
+    pill.addEventListener("click", () => {
+      filterPills.forEach((p) => p.classList.remove("active"));
+      pill.classList.add("active");
+      state.filter = pill.getAttribute("data-filter");
+      requestRender();
     });
-  }
+  });
 
-  const grain = document.getElementById('grain-amount');
-  if (grain) {
-    grain.addEventListener('input', (e) => {
-      state.grain = Number(e.target.value);
-      document.getElementById('grain-amount-val').textContent = `${e.target.value}%`;
-      redraw();
-    });
-  }
+  // Shader Sliders
+  bindSlider("filter-intensity", "filter-intensity-val", (v) => {
+    state.filterIntensity = v / 100;
+  }, "%");
 
-  const vig = document.getElementById('vignette-amount');
-  if (vig) {
-    vig.addEventListener('input', (e) => {
-      state.vignette = Number(e.target.value);
-      document.getElementById('vignette-amount-val').textContent = `${e.target.value}%`;
-      redraw();
-    });
-  }
+  bindSlider("grain-intensity", "grain-intensity-val", (v) => {
+    state.grain = v / 100;
+  }, "%");
 
-  const sunsetGlow = document.getElementById('sunset-glow-toggle');
-  if (sunsetGlow) {
-    sunsetGlow.addEventListener('change', (e) => {
-      state.sunsetGlow = e.target.checked;
-      redraw();
-    });
-  }
+  bindSlider("vignette-intensity", "vignette-intensity-val", (v) => {
+    state.vignette = v / 100;
+  }, "%");
 
-  const halftone = document.getElementById('halftone-toggle');
-  if (halftone) {
-    halftone.addEventListener('change', (e) => {
-      state.halftone = e.target.checked;
-      redraw();
-    });
-  }
+  bindSlider("halftone-intensity", "halftone-intensity-val", (v) => {
+    state.halftone = v / 100;
+  }, "%");
 
-  // Typography inputs
-  const titleText = document.getElementById('title-text');
-  if (titleText) {
-    titleText.addEventListener('input', (e) => {
-      state.titleText = e.target.value;
-      redraw();
-    });
-  }
+  // Typography Inputs
+  bindInput("title-text-top", (val) => { state.titleTop = val; });
+  bindInput("title-text-sub", (val) => { state.titleSub = val; });
 
-  const titleFont = document.getElementById('title-font');
-  if (titleFont) {
-    titleFont.addEventListener('change', (e) => {
-      state.titleFont = e.target.value;
-      redraw();
-    });
-  }
+  // Emblems & Badges Toggles
+  bindCheckbox("show-vi-emblem", (checked) => { state.showViEmblem = checked; });
+  bindCheckbox("show-mature-badge", (checked) => { state.showMatureBadge = checked; });
+  bindCheckbox("show-wanted-meter", (checked) => { state.showWantedMeter = checked; });
+  bindCheckbox("show-barcode", (checked) => { state.showBarcode = checked; });
 
-  const titleStyle = document.getElementById('title-style');
-  if (titleStyle) {
-    titleStyle.addEventListener('change', (e) => {
-      state.titleStyle = e.target.value;
-      redraw();
-    });
-  }
-
-  const titleDepth = document.getElementById('title-depth');
-  if (titleDepth) {
-    titleDepth.addEventListener('input', (e) => {
-      state.titleDepth = Number(e.target.value);
-      document.getElementById('title-depth-val').textContent = `${e.target.value}px`;
-      redraw();
-    });
-  }
-
-  const subText = document.getElementById('subtitle-text');
-  if (subText) {
-    subText.addEventListener('input', (e) => {
-      state.subtitleText = e.target.value;
-      redraw();
-    });
-  }
-
-  const subFont = document.getElementById('subtitle-font');
-  if (subFont) {
-    subFont.addEventListener('change', (e) => {
-      state.subtitleFont = e.target.value;
-      redraw();
-    });
-  }
-
-  const subColor = document.getElementById('subtitle-color');
-  if (subColor) {
-    subColor.addEventListener('input', (e) => {
-      state.subtitleColor = e.target.value;
-      redraw();
-    });
-  }
-
-  const tagline = document.getElementById('tagline-text');
-  if (tagline) {
-    tagline.addEventListener('input', (e) => {
-      state.taglineText = e.target.value;
-      redraw();
-    });
-  }
-
-  // Emblems & Badges
-  const viToggle = document.getElementById('vi-toggle');
-  if (viToggle) {
-    viToggle.addEventListener('change', (e) => {
-      state.viShow = e.target.checked;
-      redraw();
-    });
-  }
-
-  const viPos = document.getElementById('vi-position');
-  if (viPos) {
-    viPos.addEventListener('change', (e) => {
-      state.viPosition = e.target.value;
-      redraw();
-    });
-  }
-
-  const viStyle = document.getElementById('vi-style');
-  if (viStyle) {
-    viStyle.addEventListener('change', (e) => {
+  const viStyleSelect = document.getElementById("vi-style-select");
+  if (viStyleSelect) {
+    viStyleSelect.addEventListener("change", (e) => {
       state.viStyle = e.target.value;
-      redraw();
+      requestRender();
     });
   }
 
-  const badgeToggle = document.getElementById('badge-toggle');
-  if (badgeToggle) {
-    badgeToggle.addEventListener('change', (e) => {
-      state.badgeShow = e.target.checked;
-      redraw();
-    });
-  }
+  bindSlider("wanted-stars", "wanted-stars-val", (v) => {
+    state.wantedStars = v;
+  }, " Stars");
 
-  const badgeRating = document.getElementById('badge-rating');
-  if (badgeRating) {
-    badgeRating.addEventListener('change', (e) => {
-      state.badgeRating = e.target.value;
-      redraw();
-    });
-  }
-
-  const badgeDesc = document.getElementById('badge-desc');
-  if (badgeDesc) {
-    badgeDesc.addEventListener('input', (e) => {
-      state.badgeDesc = e.target.value;
-      redraw();
-    });
-  }
-
-  const barcodeToggle = document.getElementById('barcode-toggle');
-  if (barcodeToggle) {
-    barcodeToggle.addEventListener('change', (e) => {
-      state.barcodeShow = e.target.checked;
-      redraw();
-    });
-  }
-
-  const starsToggle = document.getElementById('stars-toggle');
-  if (starsToggle) {
-    starsToggle.addEventListener('change', (e) => {
-      state.starsShow = e.target.checked;
-      redraw();
-    });
-  }
-
-  // Export buttons
-  document.querySelectorAll('.btn-export').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const s = btn.dataset.size;
-      const ratio = s === '1920x1080' ? '16:9' : s === '1080x1350' ? '4:5' : '1:1';
-      exportPNG(ratio);
-    });
+  // Export Buttons
+  document.getElementById("btn-quick-export")?.addEventListener("click", () => {
+    downloadArtwork("gta6-cover-art.png", 1.0);
   });
 
-  const btnExportAll = document.getElementById('btn-export-all');
-  if (btnExportAll) btnExportAll.addEventListener('click', exportAllSizes);
-
-  const btnExportQuick = document.getElementById('btn-export-quick');
-  if (btnExportQuick) btnExportQuick.addEventListener('click', () => exportPNG());
-
-  // Interactive Canvas Drag-to-Pan
-  let isDragging = false;
-  let startX = 0;
-  let startY = 0;
-  let initialPanX = 0;
-  let initialPanY = 0;
-  let activePointerId = null;
-
-  canvas.addEventListener('pointerdown', (e) => {
-    isDragging = true;
-    activePointerId = e.pointerId;
-    canvas.setPointerCapture(e.pointerId);
-    startX = e.clientX;
-    startY = e.clientY;
-    const p = (state.panels && state.panels[activePanelIndex]) || {};
-    initialPanX = p.panX || 0;
-    initialPanY = p.panY || 0;
+  document.getElementById("btn-export-standard")?.addEventListener("click", () => {
+    downloadArtwork("gta6-cover-art.png", 1.0);
   });
 
-  canvas.addEventListener('pointermove', (e) => {
-    if (!isDragging || e.pointerId !== activePointerId) return;
-    const dx = e.clientX - startX;
-    const dy = e.clientY - startY;
-
-    if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-    state.panels[activePanelIndex].panX = Math.max(-100, Math.min(100, initialPanX + (dx / 3)));
-    state.panels[activePanelIndex].panY = Math.max(-100, Math.min(100, initialPanY + (dy / 3)));
-
-    syncPanelUI();
-    redraw();
+  document.getElementById("btn-export-4k")?.addEventListener("click", () => {
+    downloadArtwork("gta6-cover-art-master-4k.png", 2.0);
   });
 
-  const stopDrag = (e) => {
-    if (isDragging && e.pointerId === activePointerId) {
-      isDragging = false;
-      activePointerId = null;
-      try {
-        canvas.releasePointerCapture(e.pointerId);
-      } catch (_) {}
-    }
-  };
+  document.getElementById("btn-export-jpeg")?.addEventListener("click", () => {
+    downloadArtwork("gta6-cover-art.jpg", 1.0, "image/jpeg", 0.92);
+  });
 
-  canvas.addEventListener('pointerup', stopDrag);
-  canvas.addEventListener('pointercancel', stopDrag);
-
-  // Wheel to Zoom
-  canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    if (!state.panels[activePanelIndex]) state.panels[activePanelIndex] = {};
-    const curZoom = state.panels[activePanelIndex].zoom || 100;
-    const delta = e.deltaY < 0 ? 5 : -5;
-    state.panels[activePanelIndex].zoom = Math.max(50, Math.min(300, curZoom + delta));
-    syncPanelUI();
-    redraw();
+  document.getElementById("btn-reset-defaults")?.addEventListener("click", () => {
+    Object.assign(state, getPreset("quad-comic"));
+    syncControlsToState();
+    rebuildSlotControls();
+    requestRender();
   });
 }
 
-// Initialization
-(async () => {
-  await preloadSamples();
-  setupEvents();
-  syncUI();
+function bindSlider(id, valId, setter, suffix = "") {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  if (!el) return;
+  el.addEventListener("input", (e) => {
+    const num = parseInt(e.target.value, 10);
+    setter(num);
+    if (valEl) valEl.textContent = `${num}${suffix}`;
+    requestRender();
+  });
+}
 
-  const shot = new URLSearchParams(location.search).get('shot');
-  if (shot) {
-    runShot(shot, new URLSearchParams(location.search), async ({ presetName, layout, ratio, title, subtitle, photo }) => {
-      if (presetName && PRESETS[presetName]) {
-        state = JSON.parse(JSON.stringify(PRESETS[presetName]));
-      }
-      if (layout) state.layout = layout;
-      if (ratio) state.ratio = ratio;
-      if (title) state.titleText = title;
-      if (subtitle) state.subtitleText = subtitle;
-      if (photo && state.panels[0]) {
-        state.panels[0].sample = photo;
-      }
-      syncUI();
-      redraw();
-    });
-  } else {
-    redraw();
-  }
-})();
+function bindInput(id, setter) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("input", (e) => {
+    setter(e.target.value);
+    requestRender();
+  });
+}
+
+function bindCheckbox(id, setter) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("change", (e) => {
+    setter(e.target.checked);
+    requestRender();
+  });
+}
+
+/**
+ * Synchronizes DOM form inputs with state
+ */
+function syncControlsToState() {
+  document.querySelectorAll(".ratio-pill").forEach((p) => {
+    p.classList.toggle("active", p.getAttribute("data-aspect") === state.aspect);
+  });
+
+  document.querySelectorAll(".layout-pill").forEach((p) => {
+    p.classList.toggle("active", p.getAttribute("data-layout") === state.layout);
+  });
+
+  document.querySelectorAll(".filter-pill").forEach((p) => {
+    p.classList.toggle("active", p.getAttribute("data-filter") === state.filter);
+  });
+
+  setVal("filter-intensity", "filter-intensity-val", Math.round(state.filterIntensity * 100), "%");
+  setVal("grain-intensity", "grain-intensity-val", Math.round(state.grain * 100), "%");
+  setVal("vignette-intensity", "vignette-intensity-val", Math.round(state.vignette * 100), "%");
+  setVal("halftone-intensity", "halftone-intensity-val", Math.round(state.halftone * 100), "%");
+
+  setText("title-text-top", state.titleTop);
+  setText("title-text-sub", state.titleSub);
+
+  setCheck("show-vi-emblem", state.showViEmblem);
+  setCheck("show-mature-badge", state.showMatureBadge);
+  setCheck("show-wanted-meter", state.showWantedMeter);
+  setCheck("show-barcode", state.showBarcode);
+}
+
+function setVal(id, valId, val, suffix = "") {
+  const el = document.getElementById(id);
+  const valEl = document.getElementById(valId);
+  if (el) el.value = val;
+  if (valEl) valEl.textContent = `${val}${suffix}`;
+}
+
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el && text !== undefined) el.value = text;
+}
+
+function setCheck(id, checked) {
+  const el = document.getElementById(id);
+  if (el && checked !== undefined) el.checked = checked;
+}
+
+// Bootstrap Application
+async function initApp() {
+  initControls();
+  rebuildSlotControls();
+  syncControlsToState();
+  await preloadSampleImages();
+  requestRender();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initApp);
+} else {
+  initApp();
+}

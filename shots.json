@@ -1,6 +1,46 @@
 [
-  { "name": "1-cover.jpg", "query": "?shot=cover&preset=vice-sunset&ratio=16:9&title=GRAND%20THEFT&subtitle=Vice%20City", "w": 1280, "h": 720 },
-  { "name": "2-editor.jpg", "query": "?shot=editor&preset=vice-sunset&title=GRAND%20THEFT&subtitle=Vice%20City", "w": 1280, "h": 720 },
-  { "name": "3-cover-square.jpg", "query": "?shot=cover&preset=neon-noir&ratio=1:1&title=VICE%20DREAMS&subtitle=Night%20Shift", "w": 1080, "h": 1080 },
-  { "name": "4-cover-portrait.jpg", "query": "?shot=cover&preset=golden-hour&ratio=4:5&title=SUNSET%20STRIP&subtitle=Leonida%20Shores", "w": 1024, "h": 1280 }
+  {
+    "name": "1-cover",
+    "description": "Primary GTA 6 multi-panel comic collage cover art in 16:9 widescreen format",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "url": "http://localhost:3000/?layout=quad&filter=vice-sunset&title=VI",
+    "waitForSelector": "#cover-canvas",
+    "delay": 1200
+  },
+  {
+    "name": "2-editor",
+    "description": "Full interactive creator studio with panel slot configurations, typography controls, and retro shaders",
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "url": "http://localhost:3000/",
+    "waitForSelector": "#sidebar",
+    "delay": 1000
+  },
+  {
+    "name": "3-cover-square",
+    "description": "1:1 Square cover art variant optimized for album covers and social feeds",
+    "viewport": {
+      "width": 1080,
+      "height": 1080
+    },
+    "url": "http://localhost:3000/?aspect=1-1&layout=slash&filter=neon-noir",
+    "waitForSelector": "#cover-canvas",
+    "delay": 1200
+  },
+  {
+    "name": "4-cover-portrait",
+    "description": "9:16 Vertical mobile poster variant with multi-tiered character panels",
+    "viewport": {
+      "width": 1080,
+      "height": 1920
+    },
+    "url": "http://localhost:3000/?aspect=9-16&layout=epic&filter=comic-punch",
+    "waitForSelector": "#cover-canvas",
+    "delay": 1200
+  }
 ]

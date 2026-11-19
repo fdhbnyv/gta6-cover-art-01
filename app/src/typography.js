@@ -1,139 +1,124 @@
-// Typography engine: 3D Beveled Titles, Outlines, Gradients, and Neon Script Subtitles
+/**
+ * GTA 6 Cover Art Studio - 3D Typography & Script Compositor
+ * Renders beveled extruded display headings and neon cursive subtitles.
+ */
 
-/** Renders bold 3D beveled title lettering with multi-layer extrusion and stroke */
-export function drawTitle(ctx, text, fontName, cx, cy, size, style = 'sunset', depth = 12) {
-  if (!text) return;
-  const upper = text.trim().toUpperCase();
+/**
+ * Draws 3D extruded and beveled header text on canvas
+ */
+export function drawExtrudedTitle(ctx, text, x, y, options = {}) {
+  const {
+    fontSize = 72,
+    fontFamily = "'Anton', Impact, sans-serif",
+    depth = 14,
+    depthAngle = Math.PI * 0.25, // 45 degrees
+    faceGradient = ["#ffffff", "#ffe6f0", "#ff2a85", "#7209b7"],
+    strokeColor = "#000000",
+    strokeWidth = 10,
+    letterSpacing = 4,
+    align = "center"
+  } = options;
 
   ctx.save();
-  ctx.font = `900 ${size}px '${fontName}', sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  // 1. 3D Bevel / Extrusion layers (drawn from back to front)
-  if (depth > 0) {
-    ctx.fillStyle = '#06020c';
-    ctx.strokeStyle = '#06020c';
-    ctx.lineWidth = size * 0.12;
-    ctx.lineJoin = 'miter';
-    ctx.miterLimit = 3;
-
-    for (let d = depth; d >= 1; d -= 1.5) {
-      ctx.strokeText(upper, cx + d * 0.7, cy + d);
-      ctx.fillText(upper, cx + d * 0.7, cy + d);
-    }
-  }
-
-  // 2. Thick black comic outline
-  ctx.strokeStyle = '#05020a';
-  ctx.lineWidth = size * 0.14;
-  ctx.lineJoin = 'miter';
+  ctx.font = `900 ${fontSize}px ${fontFamily}`;
+  ctx.textAlign = align;
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "miter";
   ctx.miterLimit = 4;
-  ctx.strokeText(upper, cx, cy);
 
-  // 3. Fill Gradient
-  let fillStyle;
-  if (style === 'chrome') {
-    const chrome = ctx.createLinearGradient(0, cy - size * 0.5, 0, cy + size * 0.5);
-    chrome.addColorStop(0.0, '#ffffff');
-    chrome.addColorStop(0.45, '#a1c4fd');
-    chrome.addColorStop(0.50, '#1a2a6c');
-    chrome.addColorStop(0.55, '#c2e9fb');
-    chrome.addColorStop(1.0, '#ffffff');
-    fillStyle = chrome;
-  } else if (style === 'comic') {
-    fillStyle = '#ffffff';
-  } else if (style === 'neon') {
-    ctx.shadowColor = '#ff007f';
-    ctx.shadowBlur = size * 0.35;
-    fillStyle = '#ffffff';
-  } else {
-    // Default: Sunset Gradient
-    const sunset = ctx.createLinearGradient(0, cy - size * 0.55, 0, cy + size * 0.55);
-    sunset.addColorStop(0.0, '#fff066');
-    sunset.addColorStop(0.35, '#ff2a8d');
-    sunset.addColorStop(0.75, '#b5179e');
-    sunset.addColorStop(1.0, '#3a0ca3');
-    fillStyle = sunset;
+  const dx = Math.cos(depthAngle);
+  const dy = Math.sin(depthAngle);
+
+  // 1. Draw extruded depth layers from back to front
+  for (let d = depth; d >= 1; d--) {
+    const layerX = x + dx * d;
+    const layerY = y + dy * d;
+
+    // Outer dark stroke for extrusion body
+    ctx.lineWidth = strokeWidth + 2;
+    ctx.strokeStyle = "#050308";
+    ctx.strokeText(text, layerX, layerY);
+
+    // Inner shadow color
+    const shadowRatio = d / depth;
+    const r = Math.round(15 + shadowRatio * 35);
+    const g = Math.round(5 + shadowRatio * 10);
+    const b = Math.round(30 + shadowRatio * 50);
+    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+    ctx.fillText(text, layerX, layerY);
   }
 
-  ctx.fillStyle = fillStyle;
-  ctx.fillText(upper, cx, cy);
+  // 2. Draw outer boundary stroke for the front face
+  ctx.lineWidth = strokeWidth;
+  ctx.strokeStyle = strokeColor;
+  ctx.strokeText(text, x, y);
 
-  // 4. Subtle inner highlight stroke for crisp definition
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
-  ctx.lineWidth = Math.max(1, size * 0.02);
-  ctx.strokeText(upper, cx, cy);
+  // 3. Create rich vertical metallic/sunset gradient for front face
+  const grad = ctx.createLinearGradient(x, y - fontSize * 0.55, x, y + fontSize * 0.45);
+  grad.addColorStop(0, faceGradient[0] || "#ffffff");
+  grad.addColorStop(0.25, faceGradient[1] || "#ffe6f0");
+  grad.addColorStop(0.65, faceGradient[2] || "#ff2a85");
+  grad.addColorStop(1, faceGradient[3] || "#7209b7");
+
+  ctx.fillStyle = grad;
+  ctx.fillText(text, x, y);
+
+  // 4. Subtle top-edge light reflection line
+  ctx.save();
+  ctx.clip();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+  ctx.strokeText(text, x, y - 1);
+  ctx.restore();
 
   ctx.restore();
 }
 
-/** Renders vibrant neon script subtitle with radiant tube glow */
-export function drawSubtitle(ctx, text, fontName, cx, cy, size, glowColor = '#ff2a8d') {
-  if (!text) return;
-  const trimmed = text.trim();
+/**
+ * Draws the neon cursive "Vice City" script subtitle
+ */
+export function drawScriptSubtitle(ctx, text, x, y, options = {}) {
+  const {
+    fontSize = 58,
+    rotation = -0.11, // approx -6.3 degrees
+    glowColor = "#ff2a85",
+    coreColor = "#ffffff"
+  } = options;
 
   ctx.save();
-  ctx.font = `${size}px '${fontName}', cursive`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  ctx.translate(x, y);
+  ctx.rotate(rotation);
 
-  // Deep dark drop shadow
-  ctx.shadowColor = '#000000';
-  ctx.shadowBlur = size * 0.3;
-  ctx.shadowOffsetX = 3;
-  ctx.shadowOffsetY = 4;
+  ctx.font = `400 ${fontSize}px 'Pacifico', cursive`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
 
-  // Outer dark boundary
-  ctx.strokeStyle = '#05020a';
-  ctx.lineWidth = size * 0.18;
-  ctx.strokeText(trimmed, cx, cy);
-
-  // Neon Radiant Glow
-  ctx.shadowOffsetX = 0;
-  ctx.shadowOffsetY = 0;
+  // Multi-pass neon bloom
   ctx.shadowColor = glowColor;
-  ctx.shadowBlur = size * 0.45;
-
+  ctx.shadowBlur = 24;
   ctx.strokeStyle = glowColor;
-  ctx.lineWidth = size * 0.08;
-  ctx.strokeText(trimmed, cx, cy);
+  ctx.lineWidth = 8;
+  ctx.strokeText(text, 0, 0);
 
-  // Pure white neon tube core
-  ctx.shadowBlur = size * 0.15;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(trimmed, cx, cy);
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = "#ff7700";
+  ctx.lineWidth = 4;
+  ctx.strokeText(text, 0, 0);
 
-  ctx.restore();
-}
+  // Dark outline for contrast against busy collage backgrounds
+  ctx.shadowBlur = 0;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#08060d";
+  ctx.strokeText(text, 0, 0);
 
-/** Renders location banner / edition tagline with letter spacing */
-export function drawTagline(ctx, text, cx, cy, size) {
-  if (!text) return;
-  const upper = text.trim().toUpperCase();
+  // Core bright gradient text
+  const textGrad = ctx.createLinearGradient(0, -fontSize * 0.4, 0, fontSize * 0.4);
+  textGrad.addColorStop(0, "#ffffff");
+  textGrad.addColorStop(0.4, "#ffeef8");
+  textGrad.addColorStop(1, "#ff99cc");
 
-  ctx.save();
-  ctx.font = `bold ${size}px 'Anton', sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-
-  // Background pill / ribbon
-  const metrics = ctx.measureText(upper);
-  const pillW = metrics.width + size * 2.5;
-  const pillH = size * 1.8;
-
-  ctx.fillStyle = 'rgba(10, 4, 18, 0.9)';
-  ctx.strokeStyle = '#ff2a8d';
-  ctx.lineWidth = 1.5;
-
-  ctx.beginPath();
-  ctx.roundRect(cx - pillW / 2, cy - pillH / 2, pillW, pillH, 4);
-  ctx.fill();
-  ctx.stroke();
-
-  // Text
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(upper, cx, cy);
+  ctx.fillStyle = textGrad;
+  ctx.fillText(text, 0, 0);
 
   ctx.restore();
 }
