@@ -619,9 +619,12 @@ function setupEvents() {
   let startY = 0;
   let initialPanX = 0;
   let initialPanY = 0;
+  let activePointerId = null;
 
-  canvas.addEventListener('mousedown', (e) => {
+  canvas.addEventListener('pointerdown', (e) => {
     isDragging = true;
+    activePointerId = e.pointerId;
+    canvas.setPointerCapture(e.pointerId);
     startX = e.clientX;
     startY = e.clientY;
     const p = (state.panels && state.panels[activePanelIndex]) || {};
@@ -629,8 +632,8 @@ function setupEvents() {
     initialPanY = p.panY || 0;
   });
 
-  window.addEventListener('mousemove', (e) => {
-    if (!isDragging) return;
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDragging || e.pointerId !== activePointerId) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
 
@@ -642,9 +645,18 @@ function setupEvents() {
     redraw();
   });
 
-  window.addEventListener('mouseup', () => {
-    isDragging = false;
-  });
+  const stopDrag = (e) => {
+    if (isDragging && e.pointerId === activePointerId) {
+      isDragging = false;
+      activePointerId = null;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
+  };
+
+  canvas.addEventListener('pointerup', stopDrag);
+  canvas.addEventListener('pointercancel', stopDrag);
 
   // Wheel to Zoom
   canvas.addEventListener('wheel', (e) => {
